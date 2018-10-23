@@ -3,6 +3,7 @@ import os
 from is_msgs.robot_pb2 import RobotConfig
 from is_wire.core import Channel, Message, Subscription
 from is_msgs.common_pb2 import Tensor
+from is_msgs.camera_pb2 import FrameTransformation
 from np_pb import to_tensor, to_np
 import numpy as np
 import math
@@ -97,8 +98,9 @@ while True:
     # Check if the message received is the robot's odometry - FrameTransformation type
     if (message.topic == "FrameTransformation.2000.2001"):
         # unpack the message according to its format
-        tensor = message.unpack(Tensor)
-
+        frameTransf = message.unpack(FrameTransformation)
+        tensor = frameTransf.tf
+        
         # get the transformation matrix corresponding to the current rotation and position of the robot
         lastOdometry = np.matrix(tensor.doubles).reshape(tensor.shape.dims[0].size,tensor.shape.dims[1].size)
         pepperPose = np.matmul(robotToWorld,lastOdometry)
@@ -115,6 +117,7 @@ while True:
         # Print position and orinetation on the screen
         stdscr.addstr(5, 20, strPosition)
         stdscr.addstr(8, 20, strRotation)
+        stdscr.addstr(12,20, "Reading normal odometry")
 
 
         # Convert the transformation matrix to tensor to be sent as a message
@@ -125,11 +128,13 @@ while True:
 
     elif (message.topic == "FrameTransformation.2001.1003"):
         # unpack the message according to its format
-        tensor = message.unpack(Tensor)
+        frameTransf = message.unpack(FrameTransformation)
+        tensor = frameTransf.tf
+        
         # get the transformation matrix corresponding to the current pose of the robot corrected when
         # it sees an ArUco marker
         robotToWorld = np.matrix(tensor.doubles).reshape(tensor.shape.dims[0].size,tensor.shape.dims[1].size)
-        
+        stdscr.addstr(14,20, "Both robot and IS saw the ArUco marker. Correcting odometry.")
     
 
     # waits for a key hit but doesn't block the program

@@ -1,4 +1,4 @@
-from is_msgs.common_pb2 import Tensor
+from is_msgs.camera_pb2 import FrameTransformation
 from is_wire.core import Channel, Message, Subscription
 import numpy as np
 import math
@@ -54,7 +54,8 @@ while True:
     # listen the channel
     message = channel.consume()
     # unpack the message according to its format
-    tensor = message.unpack(Tensor)
+    frameTransf = message.unpack(FrameTransformation)
+    tensor = frameTransf.tf
     # get the transformation matrix corresponding to the current rotation and position of the robot
     matrix=np.matrix(tensor.doubles).reshape(tensor.shape.dims[0].size,tensor.shape.dims[1].size)
     posX = matrix[0,3]

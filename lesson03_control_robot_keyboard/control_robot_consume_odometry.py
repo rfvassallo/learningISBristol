@@ -2,7 +2,7 @@ import curses
 import os
 from is_msgs.robot_pb2 import RobotConfig
 from is_wire.core import Channel, Message, Subscription
-from is_msgs.common_pb2 import Tensor
+from is_msgs.camera_pb2 import FrameTransformation
 import numpy as np
 import math
 
@@ -80,7 +80,9 @@ while True:
     # Check if the message received is the robot's odometry - FrameTransformation type
     if (message.topic == "FrameTransformation.2000.2001"):
         # unpack the message according to its format
-        tensor = message.unpack(Tensor)
+        frameTransf = message.unpack(FrameTransformation)
+        tensor = frameTransf.tf
+        
         # get the transformation matrix corresponding to the current rotation and position of the robot
         matrix=np.matrix(tensor.doubles).reshape(tensor.shape.dims[0].size,tensor.shape.dims[1].size)
         posX = matrix[0,3]
