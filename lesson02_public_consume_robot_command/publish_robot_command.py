@@ -3,7 +3,7 @@ from is_msgs.robot_pb2 import RobotConfig
 
 
 #Create a channel to connet to the broker
-channel = Channel("amqp://10.10.2.20:30000")
+channel = Channel("amqp://10.10.2.23:30000")
 
 # Create Message
 message = Message()

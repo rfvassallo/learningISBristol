@@ -3,20 +3,81 @@ from is_wire.core import Channel, Message, Subscription
 from is_msgs.common_pb2 import Position, Pose
 from is_msgs.camera_pb2 import FrameTransformation
 from is_msgs.robot_pb2 import RobotConfig
+from google.protobuf.struct_pb2 import Struct
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.matlib
 from numpy.linalg import inv
-import numpy.matlib
 import math
 import sys
-import qi
+import argparse
+import time
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 sys.path.append('../lesson10_path_planning/')
-#from path_planning_PRM import PRM_planning, create_virtualObstacles, read_map
+from path_planning_PRM import PRM_planning, create_virtualObstacles, read_map
+import socket
 
 
+###################################################
+# Unpack message to extract the Frame Transformation carried in its content 
+def unpackFrameTransformation (message):
+    # unpack the message according to the Frame Transformation format
+    frameTransf = message.unpack(FrameTransformation)
+    tensor = frameTransf.tf
+
+    # get the transformation matrix from the tensor in the message
+    transfMatrix = np.matrix(tensor.doubles).reshape(tensor.shape.dims[0].size,tensor.shape.dims[1].size)
+    return transfMatrix
+###################################################
+
+###################################################
+# Apply frame transformation to a point and return its new coordinates 
+def changeRefFrame(x,y,z,transfMatrix):
+    # transform the poitn (x,y) to the frame represented by the transformation matrix
+    origPoint = np.matrix([x, y, z, 1]).T
+    transfPoint = transfMatrix*origPoint
+    posX = float(transfPoint[0])
+    posY = float(transfPoint[1])
+    posZ = float(transfPoint[2])
+    return posX, posY, posZ
+####################################################
+
+###################################################
+# Publish the message to execute the robot command MoveTo    
+def commandMoveTo(posX,posY,channel):
+
+    goal = Pose()
+    goal.position.x = posX
+    goal.position.y = posY
+    goal.position.z = 0
+    goal.orientation.yaw = math.atan2(goal.position.y,goal.position.x)
+    goal.orientation.pitch = 0
+    goal.orientation.roll = 0
+    
+    goalMessage = Message()
+    goalMessage.pack(goal)
+    goalMessage.topic = "RobotGateway.0.MoveTo"
+    channel.publish(goalMessage)
+###################################################
+
+##################################################
+# Publish the massage to execute the robot command NavigateTo    
+def commandNavigateTo(posX,posY,channel):
+    goal = Position()
+    goal.x = posX
+    goal.y = posY
+    goal.z = 0
+    
+    goalMessage = Message()
+    goalMessage.pack(goal)
+    goalMessage.topic = "RobotGateway.0.NavigateTo"
+    channel.publish(goalMessage)
+##################################################
 
 
+###################################################
+# Read frame transforamation from a file
 def read_frameTransformation(fileName):
 # Function to read the file that contains the map
     with open(fileName, 'r') as f:
@@ -41,238 +102,383 @@ def read_frameTransformation(fileName):
         
         
     return frameMatrix
+######################################################
+
+def makeTurn (linear,angular,channel):
+    # Create message with command for 
+    # # linear and angular velocities  
+    message = Message()
+    robotConfig = RobotConfig()
+    robotConfig.speed.linear = linear
+    robotConfig.speed.angular = angular
+    message.pack(robotConfig)
+    message.topic = "RobotGateway.0.SetConfig"
+    # Public message
+    channel.publish(message)
+
+    t_a = datetime.now()
+    t_b = t_a
+    t_diff = relativedelta(t_b, t_a)
+    while t_diff.seconds < 4:
+        t_b = datetime.now()
+        t_diff = relativedelta(t_b, t_a)
+
+    robotConfig.speed.linear = 0
+    robotConfig.speed.angular = 0
+    message.pack(robotConfig)
+    message.topic = "RobotGateway.0.SetConfig"
+    # Public message
+    channel.publish(message)
+
+    t_a = datetime.now()
+    t_b = t_a
+    t_diff = relativedelta(t_b, t_a)
+    while t_diff.seconds < 2:
+        t_b = datetime.now()
+        t_diff = relativedelta(t_b, t_a)
+
+
+def goBack (linear,angular,channel):
+    # Create message with command for 
+    # linear and angular velocities  
+    message = Message()
+    robotConfig = RobotConfig()
+    robotConfig.speed.linear = linear
+    robotConfig.speed.angular = angular
+    message.pack(robotConfig)
+    message.topic = "RobotGateway.0.SetConfig"
+    # Public message
+    channel.publish(message)
+    t_a = datetime.now()
+    t_b = t_a
+    t_diff = relativedelta(t_b, t_a)
+    while t_diff.seconds < 4:
+        t_b = datetime.now()
+        t_diff = relativedelta(t_b, t_a)
+
+    robotConfig.speed.linear = 0
+    robotConfig.speed.angular = 0
+    message.pack(robotConfig)
+    message.topic = "RobotGateway.0.SetConfig"
+    # Public message
+    channel.publish(message)
 
 
 
-with_robot = True
+def awarenessOff(channel):
+    
+    message = Message()
+    condition = Struct()
+    condition["enabled"] = False
+    message.pack(condition)
+    message.topic = "RobotGateway.0.SetAwareness"
+    channel.publish(message) 
+   
 
-if with_robot:
+def awarenessOn(channel):
+    
+    message = Message()
+    condition = Struct()
+    condition["enabled"] = True
+    message.pack(condition)
+    message.topic = "RobotGateway.0.SetAwareness"
+    channel.publish(message)
+  
+#######################################################
+# Main program
+
+def navigate(goalX,goalY,robotArUco, worldFrame, mapFile,step,robot_size,N_KNN,MAX_EDGE_LEN,show_path):
+
+
     # Create a channel to connect to the broker
-    channel = Channel("amqp://10.10.2.20:30000")
+    channel = Channel("amqp://10.10.2.23:30000")
     # Create a subscription 
     subscription = Subscription(channel)
 
-# Subscribe to get the relation from the initial reference frame where the robot was
-# turned on and its current reference frame (dead reckoning odometry)
+    # Subscribe to the following topics:
+    # - To get the robot's current position in relation where it was turned on, i.e., dead reckoning odometry
+    # - To get the position of the ArUco marker attached to the robot's back
 
-'''
-session = qi.Session()
-try:
-    session.connect("tcp://10.10.0.111:9559")
-except RuntimeError:
-    print ("Can't connect to Naoqi")
+    #robotArUco = 8  # ArUco marker ID attached to the robot's back
+    #worldFrame = 1000    # Number of the world reference frame in the HPN Intelligent Space
 
-motion_service  = session.service("ALMotion")
-'''
-##################subscription.subscribe("FrameTransformation.1000.2000")
+    awarenessOff(channel)
+    time.sleep(6)  # to wait some time to be sure the awareness if off
 
-robotArUco = 8
-worldFrame = 1000
-
-if with_robot:
     topicGetRobotOdometry = "FrameTransformation.2000.2001"
     topicGetArUcoRobotBack = "FrameTransformation."+str(robotArUco+100)+"."+str(worldFrame)
+    
+
     subscription.subscribe(topicGetRobotOdometry)
     subscription.subscribe(topicGetArUcoRobotBack)
 
 
 
-# Initialize transformation matrices used for storing odometry and correction
-pepperPose = np.identity(4)
-robotOriginToWorld = np.identity(4)
-lastOdometry = np.identity(4)
 
-fileName = "frameArUcoRobot.dat"
-arUcoToRobot = read_frameTransformation(fileName)
-robotToArUco = inv(arUcoToRobot)
+    # Initialise transformation matrices used for storing odometry and correction
+    pepperPose = np.identity(4)
+    robotOriginToWorld = np.identity(4)
+    lastOdometry = np.identity(4)
 
+    # Load the frame transformation between the ArUco marker on the robot's back and the robot's base frame.
+    fileName = "frameArUcoRobot.dat"
+    arUcoToRobot = read_frameTransformation(fileName)
+    robotToArUco = inv(arUcoToRobot)
 
-# Parameters for Path-planning
-mapFile = "map0511.dat"
-step = 2
-robotLocalized = False
+    print("Goal: ",goalX,"  ",goalY)
 
 
-if with_robot:
+    # Localize the robot before start path planning
+    
+    robotLocalized = False
+    notSeen = 0
+    count = 0
+
     while not robotLocalized:
         # Source must be the current position of the robot in the world frame
         message = channel.consume()
         if (message.topic == topicGetRobotOdometry):
-            # unpack the message according to its format
-            frameTransf = message.unpack(FrameTransformation)
-            tensor = frameTransf.tf
-            
+            print("reading odometry")
             # get the transformation matrix corresponding to the current rotation and position of the robot
-            lastOdometry = np.matrix(tensor.doubles).reshape(tensor.shape.dims[0].size,tensor.shape.dims[1].size)
-            subscription.unsubscribe(topicGetRobotOdometry)
-    
-
+            lastOdometry = unpackFrameTransformation (message)
+            notSeen = notSeen + 1
+            print(notSeen)
+            
+        
 
         if (message.topic == topicGetArUcoRobotBack):
-            # unpack the message according to its format
-            frameTransf = message.unpack(FrameTransformation)
-            tensor = frameTransf.tf
-            #print("Space saw Aruco on Pepper back")
-            # get the transformation matrix corresponding to the current pose of the robot corrected when
-            # it sees an ArUco marker
-            arUcoToWorld = np.matrix(tensor.doubles).reshape(tensor.shape.dims[0].size,tensor.shape.dims[1].size)
+            print("correcting odometry")
+            # get the frame transformation betweeb the ArUco marker on the robot's back and the world
+            arUcoToWorld = unpackFrameTransformation (message)
+            # calculates the robot pose in the world frame
             pepperPose = arUcoToWorld*robotToArUco
+            # calculate the frame transformation needed to correct robot's odometry while the ArUco marker is not seen by the intelligent space
             robotOriginToWorld = pepperPose*inv(lastOdometry)
-            subscription.unsubscribe(topicGetArUcoRobotBack)
+            
             sourceX = pepperPose[0,3]
             sourceY = pepperPose[1,3]
             print("x= ",sourceX," y= ",sourceY)
             robotLocalized = True
-        ##################################
+            notSeen = 0
+
         
-else: 
-    sourceX = 2
-    sourceY = 19
-
-
-# Goal in the World Frame
-goalX = 0.5
-goalY = 18.5
-print("Goal: ",goalX,"  ",goalY)
-#goalWorldFrame = math.reshape(math.matrix([goalX, goalY, 0, 1]), [4, 1])
-goalWorldFrame = np.matrix([goalX, goalY, 0, 1]).T
-robot_size = 0.6
-N_KNN = 40 # number of edge from one sampled point
-MAX_EDGE_LEN = 3 # [m] Maximum edge length
-show_animation = False
-
-# Create obstacles
-'''
-ox, oy = create_virtualObstacles()
-
-
-rx, ry = PRM_planning(mapFile,sourceX, sourceY, goalX, goalY, ox, oy, robot_size, step, N_KNN, MAX_EDGE_LEN)
-
-# Check if a path was found/home/raquel/ProgrammingIS/learningISBristol//
-assert len(rx) != 0, 'Cannot found path'
-
-# Read map just to plot 
-map_x, map_y = read_map(mapFile,step)
-
-# Plot map points and obstacles
-if show_animation:
-    plt.plot(ox, oy, ".k")
-    plt.plot(sourceX, sourceY, "^r")
-    plt.plot(goalX, goalY, "^c")
-    plt.plot(map_x, map_y, ".b")
-    plt.grid(True)
-    plt.axis("equal")
-    plt.plot(rx, ry, "-r")
-    plt.show()
-
-'''
-
-#sys.exit(0)
-
-subscription.subscribe(topicGetArUcoRobotBack)
-subscription.subscribe(topicGetRobotOdometry)
-
-try:
-    while True:
-        # listen the channelprint(frameArUcoRobot)
-        message = channel.consume()
-        # Check if the message received is the robot's odometry - FrameTransformation type
-        if (message.topic == topicGetRobotOdometry):
-            # unpack the message according to its format
-            frameTransf = message.unpack(FrameTransformation)
-            tensor = frameTransf.tf
-            
-            # get the transformation matrix corresponding to the current rotation and position of the robot
-            lastOdometry = np.matrix(tensor.doubles).reshape(tensor.shape.dims[0].size,tensor.shape.dims[1].size)
-            pepperPose = robotOriginToWorld*lastOdometry
-            '''
-            # Convert the transformation matrix to tensor to be sent as a message
-            msgContent = to_tensor(np.asarray(pepperPose))
-            messageRobotPose.pack(msgContent)
-            channel.publish(messageRobotPose)
-            '''       
-            #print(pepperPose)
-
-        elif (message.topic == topicGetArUcoRobotBack):
-            # unpack the message according to its format
-            frameTransf = message.unpack(FrameTransformation)
-            tensor = frameTransf.tf
-            #print("Space saw Aruco on Pepper back")
-            
-            # get the transformation matrix corresponding to the current pose of the robot corrected when
-            # it sees an ArUco marker
-            
-            arUcoToWorld = np.matrix(tensor.doubles).reshape(tensor.shape.dims[0].size,tensor.shape.dims[1].size)
-            pepperPose = arUcoToWorld*robotToArUco
-            robotOriginToWorld = pepperPose*inv(lastOdometry)
-            #print("x= ",pepperPose[0,3]," y= ",pepperPose[1,3])
         
-        if goalWorldFrame.size > 0:
+        if notSeen > 30:
+            notSeen = 0
+            count = count + 1            
+            # unsubscribe to not accumulate messages
+            subscription.unsubscribe(topicGetRobotOdometry)
+            subscription.unsubscribe(topicGetArUcoRobotBack)
+            
+            if count > 4:
+                print("I can't get localized by the Intelligent Space.")
+                print("Please take me to a spot where the marker on my back can be seen by one of the cameras.")
+                sys.exit(0)
+            
+            makeTurn(0,0.3,channel)
+            subscription.subscribe(topicGetRobotOdometry)
+            subscription.subscribe(topicGetArUcoRobotBack)
+
+            
+    # unsubscribe to not accumulate messages
+    subscription.unsubscribe(topicGetRobotOdometry)
+    subscription.unsubscribe(topicGetArUcoRobotBack)
+    
+    
+
+    #sys.exit(0)
+
+
+    # Create obstacles
+    ox, oy = create_virtualObstacles()
+
+    # Call path planning
+    # rx, ry contains the positions in the path
+    rx, ry = PRM_planning(mapFile,sourceX, sourceY, goalX, goalY, ox, oy, robot_size, step, N_KNN, MAX_EDGE_LEN)
+
+    # Check if a path was found/home/raquel/ProgrammingIS/learningISBristol//
+    #assert len(rx) != 0, 'Cannot found path'
+    if len(rx) ==0:
+        print('Cannot find path')
+        raise SystemError
+        
+       
+
+    #sys.exit(0)
+
+    # Plot map points and obstacles
+    if show_path:
+        map_x, map_y = read_map(mapFile,step)
+        plt.plot(ox, oy, ".k")
+        plt.plot(sourceX, sourceY, "^r")
+        plt.plot(goalX, goalY, "^c")
+        plt.plot(map_x, map_y, ".b")
+        plt.grid(True)
+        plt.axis("equal")
+        plt.plot(rx, ry, "-r")
+        plt.plot(rx,ry,"og")
+        plt.show()
+
+
+
+    # Reverse the order of the path (list) returned by the path-planning algorithm
+    # The original list contains the goal at the beginning and the source at the end. We need the reverse
+    rx = rx[::-1]
+    ry = ry[::-1]
+    print(rx)
+    print(ry)
+
+    #sys.exit(0)
+
+
+    # Subscribe to the previous topics
+    subscription.subscribe(topicGetRobotOdometry)
+    subscription.subscribe(topicGetArUcoRobotBack)
+
+
+    i=0
+    k=0
+    stuck = 0
+    dist = 100.0
+    threshold = 0.2
+
+    try:
+        while True:
+
+
+            try:
+                        
+                # listen the channelprint(frameArUcoRobot)
+                message = channel.consume(timeout=0.5)
+                # Check if the message received is the robot's odometry - FrameTransformation type
+                if (message.topic == topicGetRobotOdometry):
+                    # get the transformation matrix corresponding to the current rotation and position of the robot
+                    lastOdometry = unpackFrameTransformation (message)
+                    pepperPose = robotOriginToWorld*lastOdometry
+                        
+                    #print(pepperPose)
+
+                elif (message.topic == topicGetArUcoRobotBack):
+
+                    print("Odometry Corrected")
+                    # get the transformation matrix corresponding to the current pose of the robot corrected when
+                    # it sees an ArUco marker
+                    arUcoToWorld = unpackFrameTransformation (message)
+                    pepperPose = arUcoToWorld*robotToArUco
+                    robotOriginToWorld = pepperPose*inv(lastOdometry)
+            except socket.timeout:
+
+                print("Time out")
+                    
+            
             # matrix Inverse
             toPepperFrame = inv(pepperPose)
             # transform the goal from the world frame to the robot frame
-            goalPepperFrame = toPepperFrame*goalWorldFrame
-            posX = float(goalPepperFrame[0])
-            posY = float(goalPepperFrame[1])
-            posZ = float(goalPepperFrame[2])
+            posX, posY, posZ = changeRefFrame(rx[i],ry[i],0,toPepperFrame)
+            
+            distPrevious = dist
+            dist = math.sqrt(posX**2 + posY**2)
+            #print(dist)
+            # If distance to current goal is less than the threshold, pick the next point in the path to be the next goal
+            if dist < threshold :
+                i = i + 1
+                stuck = 0
+                print(dist)
+                print("Path index: ", i, "  of ", len(rx))
 
-            if (True):
-                goal = Position()
-                goal.x = posX
-                goal.y = posY
-                #goal.z = posZ
-                goal.z = 0
-                #print("goalX = ",goal.x," goalY = ",goal.y,"goalZ = ",goal.z)
-                goalMessage = Message()
-                goalMessage.pack(goal)
-                goalMessage.topic = "RobotGateway.0.NavigateTo"
-            else: 
-                goal = Pose()
-                goal.position.x = posX
-                goal.position.y = posY
-                goal.position.z = posZ
-                #print(goal.position.x,"#",goal.position.y,"#",goal.position.z)
-                goal.orientation.yaw = 90*3.14/180
-                goal.orientation.pitch = 0
-                goal.orientation.roll = 0
-                goalMessage = Message()
-                goalMessage.pack(goal)
-                goalMessage.topic = "RobotGateway.0.MoveTo"
+                if i == (len(rx)-1):
+                    threshold = 0.5
 
+                # If that was the last point in the path, finish navigation. Goal achieved.
+                if i >= len(rx):
+                    
+                    print("Goal achieved")
+                    break
+                # If not the last point in the path, get the next point and converte it to robot frame
+                print("Next point in the path")
+                posX, posY, posZ = changeRefFrame(rx[i],ry[i],0,toPepperFrame)
+                # Command robot to move
+                commandMoveTo(posX,posY,channel)
+                #commandNavigateTo(posX,posY,channel)
+                
+            # If distance to current goal is greater than the threshold, check if robot is stopped 
+            # To check if robot is stopped, calculate the difference between current distance and previous one   
+            elif abs(dist-distPrevious) < 0.005:  # if difference is less than 0.5 cm
+                k = k + 1  # accumulate 
+                if k == 20: #see if situation remains for 20 times
+                    # Robot is stuck. Let's send a move command again
+                    print(dist)
+                    k=0
+                    print("Ooops.... I got stuck.... I will try to move. Stuck = ", stuck)
+                    posX, posY, posZ = changeRefFrame(rx[i],ry[i],0,toPepperFrame)
+                    
+                    stuck = stuck +1
+                    if stuck == 4:
 
-            channel.publish(goalMessage)
-        dist = math.sqrt(posX**2 + posY**2)
-        print(dist)
-        if dist < 0.4 :
-            print("Goal achieved")
-            #motion_service.stopMove()
-            break
+                        goBack(-10,0,channel)
+                        stuck =0
+                        posX, posY, posZ = changeRefFrame(rx[i],ry[i],0,toPepperFrame)
+                        # Command robot to move
+                        commandMoveTo(posX,posY,channel)
+                    else: 
+                        commandMoveTo(posX,posY,channel)
+            
     
-    goal = Position()
-    goal.x = 0
-    goal.y = 0
-    goal.z = 0
-    #print("goalX = ",goal.x," goalY = ",goal.y,"goalZ = ",goal.z)
-    goalMessage = Message()
-    goalMessage.pack(goal)
-    goalMessage.topic = "RobotGateway.0.NavigateTo"
-    channel.publish(goalMessage)
+                        
+        
 
-    #motion_service.stopMove()
+    except KeyboardInterrupt:
+        
+        commandMoveTo(0,0,channel)
+        
+    #awarenessOff(channel)
     
-
-except KeyboardInterrupt:
-    #motion_service.stopMove()
-    goal = Position()
-    goal.x = 0
-    goal.y = 0
-    goal.z = 0
-    #print("goalX = ",goal.x," goalY = ",goal.y,"goalZ = ",goal.z)
-    goalMessage = Message()
-    goalMessage.pack(goal)
-    goalMessage.topic = "RobotGateway.0.NavigateTo"
-    channel.publish(goalMessage)
-
-    
+    awarenessOn(channel)
+    time.sleep(6)
+    #awarenessOn(channel)
 
 
+def main(args):
+    print(__file__ + " start!!")
+    # parameters
+    mapFile = args["mapfile"]
+    robotArUco = args["aruco"]
+    worldFrame = args["worldframe"]
+    step = args["grain"]
+    goal = args["target"]
+    gx = goal[0]
+    gy = goal[1]
+    rr = args["robotradius"]
+    N_KNN = args["nknn"]  # number of edge from one sampled point
+    MAX_EDGE_LEN = args["maxedge"] # [m] Maximum edge length
+    show_path = False
+
+    navigate(gx,gy,robotArUco, worldFrame, mapFile,step,rr,N_KNN,MAX_EDGE_LEN,show_path)
+
+
+
+
+
+if __name__ == '__main__':
+    # construct the argument parse and parse the arguments
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-m", "--mapfile", default="../lesson09_mapping_with_ArUco/map1311.dat",
+        help="Name of the file that will contain the map")
+    ap.add_argument("-g", "--grain", type=int, default=2,
+        help="Granularity for creating the roadmap from the points saved in the map file")
+    ap.add_argument("-t", "--target", nargs='+', type=float,
+        help="x and y coordinates of the target for the path planning")
+    ap.add_argument("-a","--aruco",type=int, default=8,
+        help="Code of the ArUco marker used as robot ID and attached to robot's back")
+    ap.add_argument("-w","--worldframe",type=int, default=1000,
+        help="Code of the World Reference Frame")    
+    ap.add_argument("-r", "--robotradius", type=float, default=0.6,
+        help="Robot radius size")
+    ap.add_argument("-n", "--nknn", type=int, default= 20,
+        help="Number of edges (KNN) from one sampled point used for building the roadmap")
+    ap.add_argument("-e", "--maxedge", type=int, default= 3,
+        help="Maximum edge length [m] used for avoiding collisions")
+
+    args = vars(ap.parse_args())
+
+    main(args)

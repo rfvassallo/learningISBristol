@@ -21,8 +21,7 @@ mapFile = args["mapfile"]
 
 
 # Connect to the broker
-#channel = Channel("amqp://guest:guest@10.10.2.20:30000")
-channel = Channel("amqp://10.10.2.20:30000")
+channel = Channel("amqp://10.10.2.23:30000")
 
 
 # Subscribe to the desired topic(s)
@@ -59,29 +58,16 @@ with open(mapFile, 'w') as f:
         if frameTrans.HasField("tf") :
           tensor = frameTrans.tf
           matrix=np.matrix(tensor.doubles).reshape(tensor.shape.dims[0].size,tensor.shape.dims[1].size)
-          '''
-          print ("---- Frame Transformation Matrix -----")
-          print (matrix)
-          print ("-------------------------------------")
-          '''
+          
           posX = matrix[0,3]
           posY = matrix[1,3]
           posZ = matrix[2,3]
           strPosition = 'X: ' + str(posX) + '   Y: ' + str(posY) + '   Z: ' + str(posZ)
-          '''
-          print ("-------- Position ------------------")
-          print (strPosition)
-          print ("------------------------------------\n")
-          '''
+         
           ii+= 1
           print(ii)
           f.write('{:.4f} {:.4f}\n'.format(posX, posY))
   except KeyboardInterrupt:
     pass
         
-'''
-fig=plt.figure()
-plt.axis([-5,20,-5,20])
-plt.plot(x,y,'b.')
-plt.show()
-'''
+

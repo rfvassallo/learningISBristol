@@ -42,7 +42,7 @@ class KDTree:
         self.tree = scipy.spatial.cKDTree(data)
 
     def search(self, inp, k=1):
-        u"""
+        """
         Search NN
 
         inp: input data, single frame or multi frame
@@ -64,7 +64,7 @@ class KDTree:
             return index, dist
 
     def search_in_distance(self, inp, r):
-        u"""
+        """
         find points with in a distance r
         """
 
@@ -204,12 +204,6 @@ def dijkstra_planning(sx, sy, gx, gy, ox, oy, rr, road_map, map_x, map_y):
         c_id = min(openset, key=lambda o: openset[o].cost)
         current = openset[c_id]
 
-        # show graph
-        '''
-        if show_animation and len(closedset.keys()) % 2 == 0:
-            plt.plot(current.x, current.y, "xg")
-            plt.pause(0.001)
-        '''
 
         if c_id == (len(road_map) - 1):
             print("goal is found!")
@@ -364,21 +358,12 @@ def main(args):
     goal = args["target"]
     gx = goal[0]
     gy = goal[1]
-    rr = args["robotradius"]
+    robot_size = args["robotradius"]
     N_KNN = args["nknn"]  # number of edge from one sampled point
     MAX_EDGE_LEN = args["maxedge"] # [m] Maximum edge length
     show_animation = args["show"]
 
-    '''
-    # start and goal position
-    sx = -1.0  # [m]
-    sy = -1.0 # [m]
-    gx = 3.0  # [m]
-    gy = 20.0  # [m]
-    robot_size = 0.6  # [m]
-    '''
-
-    robot_size = rr
+    
     # Create obstacles
     ox, oy = create_virtualObstacles()
 
@@ -409,7 +394,7 @@ def main(args):
 if __name__ == '__main__':
     # construct the argument parse and parse the arguments
     ap = argparse.ArgumentParser()
-    ap.add_argument("-m", "--mapfile", default="../lesson09_mapping_with_ArUco/map.dat",
+    ap.add_argument("-m", "--mapfile", default="../lesson09_mapping_with_ArUco/map1311.dat",
         help="Name of the file that will contain the map")
     ap.add_argument("-g", "--grain", type=int, default=2,
         help="Granularity for creating the roadmap from the points saved in the map file")
@@ -419,7 +404,7 @@ if __name__ == '__main__':
         help="x and y coordinates of the target for the path planning")
     ap.add_argument("-r", "--robotradius", type=float, default=0.6,
         help="Robot radius size")
-    ap.add_argument("-n", "--nknn", type=int, default= 40,
+    ap.add_argument("-n", "--nknn", type=int, default= 20,
         help="Number of edges (KNN) from one sampled point used for building the roadmap")
     ap.add_argument("-e", "--maxedge", type=int, default= 3,
         help="Maximum edge length [m] used for avoiding collisions")

@@ -64,7 +64,7 @@ def makeMessage (linear,angular):
 # feedback on the screen
 
 # Create a channel to connect to the broker
-channel = Channel("amqp://10.10.2.20:30000")
+channel = Channel("amqp://10.10.2.23:30000")
 # Create a subscription 
 subscription = Subscription(channel)
 # Subscribe to get the relation from the initial reference frame (2001) where the robot was

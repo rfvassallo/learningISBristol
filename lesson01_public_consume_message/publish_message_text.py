@@ -6,7 +6,7 @@ from is_wire.core import Channel, Subscription, Message
 # the Intelligent Space framework
 
 # Connect to the broker
-channel = Channel("amqp://10.10.2.20:30000")
+channel = Channel("amqp://10.10.2.23:30000")
 
 # Create the message
 message = Message()

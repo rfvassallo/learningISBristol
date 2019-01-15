@@ -21,6 +21,7 @@ subscription.subscribe("FrameTransformation.2001.1003")
 
 
 # Goal in the World Frame
+# Change the goals value to make the robot move to different coordinates.
 goalX = 0
 goalY = 0
 #goalWorldFrame = math.reshape(math.matrix([goalX, goalY, 0, 1]), [4, 1])
@@ -30,6 +31,8 @@ goalWorldFrame = np.matrix([goalX, goalY, 0, 1]).T
 pepperPose = np.identity(4)
 robotToWorld = np.identity(4)
 
+# Change this variable to test between NavigateTo and MoveTo
+useNavigate = True
 
 try:
     while True:
@@ -44,14 +47,7 @@ try:
             # get the transformation matrix corresponding to the current rotation and position of the robot
             lastOdometry = np.matrix(tensor.doubles).reshape(tensor.shape.dims[0].size,tensor.shape.dims[1].size)
             pepperPose = np.matmul(robotToWorld,lastOdometry)
-            '''
-            # Convert the transformation matrix to tensor to be sent as a message
-            msgContent = to_tensor(np.asarray(pepperPose))
-            messageRobotPose.pack(msgContent)
-            channel.publish(messageRobotPose)
-            '''       
-            #print(pepperPose)
-
+        
         elif (message.topic == "FrameTransformation.2001.1003"):
             # unpack the message according to its format
             frameTransf = message.unpack(FrameTransformation)
@@ -85,7 +81,6 @@ try:
                 goal.position.x = posX
                 goal.position.y = posY
                 goal.position.z = posZ
-                #print(goal.position.x,"#",goal.position.y,"#",goal.position.z)
                 goal.orientation.yaw = 90*3.14/180
                 goal.orientation.pitch = 0
                 goal.orientation.roll = 0

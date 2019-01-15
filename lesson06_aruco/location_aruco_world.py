@@ -1,20 +1,18 @@
 from __future__ import print_function
 from is_wire.core import Channel, Subscription
-#from is_msgs.common_pb2 import Tensor
 from is_msgs.camera_pb2 import FrameTransformation, FrameTransformations
 import numpy as np
 
 # Connect to the broker
-#channel = Channel("amqp://guest:guest@10.10.2.20:30000")
-channel = Channel("amqp://10.10.2.20:30000")
+channel = Channel("amqp://10.10.2.23:30000")
 
 # Subscribe to the desired topic(s)
 subscription = Subscription(channel)
-topic01 = "FrameTransformation.7.1003"
+topic01 = "FrameTransformation.7.1003"	     # get relation between camera 7 and the world frame 1003
 subscription.subscribe(topic01)
-topic02 =  "ArUco.7.FrameTransformations"
+topic02 =  "ArUco.7.FrameTransformations"    # get relation between camera 7 and the ArUco detected
 subscription.subscribe(topic02)
-topic03 = "FrameTransformation.100.7.1003"
+topic03 = "FrameTransformation.100.7.1003"   # get relation between the ArUco (ID 0) and the world frame 1003, through camera 7
 subscription.subscribe(topic03)
 
 # ... subscription.subscribe(topic="Other.Topic")

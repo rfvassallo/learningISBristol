@@ -12,7 +12,7 @@ import re
 
 
 # Connect to the broker
-channel = Channel("amqp://10.10.2.20:30000")
+channel = Channel("amqp://10.10.2.23:30000")
 
 # Subscribe to the desired topic(s)
 subscription = Subscription(channel)

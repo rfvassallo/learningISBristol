@@ -5,13 +5,12 @@ from is_msgs.camera_pb2 import FrameTransformations
 import numpy as np
 
 # Connect to the broker
-#channel = Channel("amqp://guest:guest@10.10.2.20:30000")
-channel = Channel("amqp://10.10.2.20:30000")
+channel = Channel("amqp://10.10.2.23:30000")
 
 
 # Subscribe to the desired topic(s)
 subscription = Subscription(channel)
-topic02 = "ArUco.7.FrameTransformations"
+topic02 = "ArUco.7.FrameTransformations"   # get relation between camera 7 and the ArUco detected
 subscription.subscribe(topic02)
 
 

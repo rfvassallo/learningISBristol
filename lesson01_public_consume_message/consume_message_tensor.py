@@ -7,7 +7,7 @@ from is_msgs.common_pb2 import Tensor
 # in some topic using the Intelligent Space framework
 
 # Connect to the broker
-channel = Channel("amqp://10.10.2.20:30000")
+channel = Channel("amqp://10.10.2.23:30000")
 
 # Subscribe to the channel
 subscription = Subscription(channel)

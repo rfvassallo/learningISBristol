@@ -10,7 +10,7 @@ import numpy as np
 # the Intelligent Space framework
 
 # Connect to the broker
-channel = Channel("amqp://10.10.2.20:30000")
+channel = Channel("amqp://10.10.2.23:30000")
 
 # Create the message that is a matrix
 message = Message()

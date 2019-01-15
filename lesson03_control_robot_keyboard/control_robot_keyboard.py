@@ -5,7 +5,7 @@ from is_wire.core import Channel, Message, Subscription
 
 
 # Create a channel to connect to the broker
-channel = Channel("amqp://10.10.2.20:30000")
+channel = Channel("amqp://10.10.2.23:30000")
 # Create a subscription 
 subscription = Subscription(channel)
 

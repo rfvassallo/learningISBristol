@@ -12,16 +12,19 @@ channel = Channel("amqp://10.10.2.20:30000")
 # Create a subscription 
 subscription = Subscription(channel)
 
-# Subscribe to get the relation from the initial reference frame where the robot was
-# turned on and its current reference frame (dead reckoning odometry)
-##################subscription.subscribe("FrameTransformation.1000.2000")
+# Subscribe to get the relations between referential frames 
+##################
 
 robotArUco = 8 
 worldFrame = 1003
 
-getRobotOdometry = "FrameTransformation.2000.2001"
+# Relation between the initial reference frame where the robot was turned on and its current reference frame (dead reckoning odometry)
+getRobotOdometry = "FrameTransformation.2000.2001" 
+# Relation between the initial reference frame where the robot was turned on and the world frame
 getRobotWorldPosition = "FrameTransformation.2001." + str(worldFrame)
+# Relation between the ArUco on the robot's back and the world frame
 getArUcoRobotBack = "FrameTransformation."+str(robotArUco+100)+"."+str(worldFrame)
+
 subscription.subscribe(getRobotOdometry)
 subscription.subscribe(getRobotWorldPosition)
 subscription.subscribe(getArUcoRobotBack)
